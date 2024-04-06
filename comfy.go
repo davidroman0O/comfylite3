@@ -18,6 +18,7 @@ const fileConn = "file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000"
 type opts struct {
 	memory bool
 	path   string
+	conn   string
 }
 
 var shutdown chan error
@@ -33,6 +34,12 @@ func WithPath(path string) Option {
 func WithMemory() Option {
 	return func(o *opts) {
 		o.memory = true
+	}
+}
+
+func WithConnection(conn string) Option {
+	return func(o *opts) {
+		o.conn = conn
 	}
 }
 
@@ -144,9 +151,19 @@ func (sm *safeMap[T, V]) Get(k T) (V, bool) {
 func scheduler(o *opts, cerr chan error) {
 	var db *sql.DB
 	var err error
+	var conn string
+	if o.conn != "" {
+		conn = o.conn
+	} else {
+		if o.memory {
+			conn = memoryConn
+		} else {
+			conn = fileConn
+		}
+	}
 
 	if o.memory {
-		db, err = sql.Open("sqlite3", memoryConn)
+		db, err = sql.Open("sqlite3", conn)
 		if err != nil {
 			cerr <- err
 			return
@@ -156,7 +173,7 @@ func scheduler(o *opts, cerr chan error) {
 			cerr <- fmt.Errorf("path is required")
 			return
 		}
-		db, err = sql.Open("sqlite3", fmt.Sprintf(fileConn, o.path))
+		db, err = sql.Open("sqlite3", fmt.Sprintf(conn, o.path))
 		if err != nil {
 			cerr <- err
 			return
