@@ -12,123 +12,165 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const memoryConn = "file::memory:?_mutex=full&cache=shared&_timeout=5000"
-const fileConn = "file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000" // ?_journal=WAL&_timeout=5000&_fk=true
+var dbCount atomic.Uint64
 
-type opts struct {
+func init() {
+	dbCount.Store(0)
+}
+
+type SqlFn func(db *sql.DB) (interface{}, error)
+
+type workItem struct {
+	id uint64
+	fn SqlFn
+}
+
+// Default Memory Connection
+const memoryConn = "file::memory:?_mutex=full&cache=shared&_timeout=5000"
+
+// Default File Connection
+const fileConn = "file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000"
+
+type ComfyDB struct {
+	id         uint64
+	db         *sql.DB
+	ringBuffer *RingBuffer[workItem]
+	safeBuffer *safeMap[uint64, bool]
+	safeChan   *safeMap[uint64, interface{}]
+	shutdown   chan struct{}
+	errors     chan error
+	ticker     *time.Ticker
+	count      atomic.Uint64
+
 	memory bool
 	path   string
 	conn   string
 }
 
-var shutdown chan error
+type ComfyOption func(*ComfyDB)
 
-type Option func(*opts)
-
-func WithPath(path string) Option {
-	return func(o *opts) {
+func WithPath(path string) ComfyOption {
+	return func(o *ComfyDB) {
 		o.path = path
 	}
 }
 
-func WithMemory() Option {
-	return func(o *opts) {
+func WithMemory() ComfyOption {
+	return func(o *ComfyDB) {
 		o.memory = true
 	}
 }
 
-func WithConnection(conn string) Option {
-	return func(o *opts) {
+func WithConnection(conn string) ComfyOption {
+	return func(o *ComfyDB) {
 		o.conn = conn
 	}
 }
 
-func Initialize(options ...Option) error {
-	o := &opts{}
-	for _, opt := range options {
-		opt(o)
+func WithBuffer(size int64) ComfyOption {
+	return func(c *ComfyDB) {
+		c.ringBuffer = Buffer[workItem](size)
+	}
+}
+
+func (c *ComfyDB) Close() {
+	c.shutdown <- struct{}{}
+	close(c.shutdown)
+	close(c.errors)
+	c.db.Close()
+}
+
+func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
+	c := &ComfyDB{
+		db:         nil,
+		ringBuffer: Buffer[workItem](1024),
+		safeBuffer: &safeMap[uint64, bool]{m: make(map[uint64]bool)},
+		safeChan:   &safeMap[uint64, interface{}]{m: make(map[uint64]interface{})},
+		shutdown:   make(chan struct{}),
+		errors:     make(chan error),
+		ticker:     time.NewTicker(1 * time.Microsecond),
+		memory:     true,
 	}
 
-	shutdown = make(chan error)
-	count.Add(1)              // should not be zero
-	go scheduler(o, shutdown) // i will tell you when i'm dead
+	c.count.Store(1)
 
-	return nil
-}
-
-// should change values later
-var ticker = time.NewTicker(10 * time.Microsecond)
-
-func Close() {
-	shutdown <- nil
-	close(shutdown)
-}
-
-type workItem struct {
-	id uint64
-	fn fn
-}
-
-var count atomic.Uint64
-
-func New(fn fn) uint64 {
-	item := workItem{
-		id: count.Add(1),
-		fn: fn,
+	for _, opt := range opts {
+		opt(c)
 	}
-	ringBuffer.Push(item)
-	safeBuffer.Set(item.id, false)
-	return item.id
-}
 
-func IsDone(id uint64) bool {
-	value, ok := safeBuffer.Get(id)
-	if !ok {
-		// if you got a uint64, that might not exists, you might be lying to me
-		// so i'm lying to you too
-		return false
-	}
-	return value
-}
+	c.id = dbCount.Add(1)
 
-func WaitFor(id uint64) <-chan interface{} {
-	var cn interface{}
-	var fine bool
-	var future chan interface{} = make(chan interface{})
-	loopTicker := time.NewTicker(10 * time.Microsecond)
-	done := make(chan bool)
-	go func() {
+	go func(instance *ComfyDB) {
+		var err error
+		var conn string
+		if instance.conn != "" {
+			conn = instance.conn
+		} else {
+			if instance.memory {
+				conn = memoryConn
+			} else {
+				conn = fileConn
+			}
+		}
+
+		if instance.memory {
+			instance.db, err = sql.Open("sqlite3", conn)
+			if err != nil {
+				instance.errors <- err
+				return
+			}
+		} else {
+			if instance.path == "" {
+				instance.errors <- fmt.Errorf("path is required")
+				return
+			}
+			instance.db, err = sql.Open("sqlite3", fmt.Sprintf(conn, instance.path))
+			if err != nil {
+				instance.errors <- err
+				return
+			}
+		}
+
+		instance.errors <- nil
+
+		instance.db.SetMaxOpenConns(1)
+		instance.db.SetMaxIdleConns(1)
+
 		for {
 			select {
-			case <-done:
-				return
-			case <-loopTicker.C:
-				value, ok := safeBuffer.Get(id)
-				if !ok {
+			case <-instance.ticker.C:
+				if instance.ringBuffer.Len() == 0 {
+					// todo @droman: add a counter to alternate the execution
 					runtime.Gosched()
 					time.Sleep(10 * time.Microsecond)
 					continue
 				}
-				if value {
-					cn, fine = safeChan.Get(id)
-					if fine {
-						loopTicker.Stop()
-					}
-					future <- cn
-					done <- true
-					close(done)
+				cb, ok := instance.ringBuffer.Pop()
+				if !ok {
+					continue
 				}
+				res, err := cb.fn(instance.db)
+				if err != nil {
+					slog.Error("Error executing query", err)
+					instance.safeChan.Set(cb.id, err)
+				} else {
+					instance.safeChan.Set(cb.id, res)
+				}
+				instance.safeBuffer.Set(cb.id, true)
+			case <-instance.shutdown:
+				instance.ticker.Stop()
+				return
 			}
 		}
-	}()
-	return future
+	}(c)
+
+	err := <-c.errors
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
-
-var ringBuffer *RingBuffer[workItem] = Buffer[workItem](1024)
-var safeBuffer *safeMap[uint64, bool] = &safeMap[uint64, bool]{m: make(map[uint64]bool)}
-var safeChan *safeMap[uint64, interface{}] = &safeMap[uint64, interface{}]{m: make(map[uint64]interface{})}
-
-type fn func(db *sql.DB) (interface{}, error)
 
 type safeMap[T comparable, V any] struct {
 	m map[T]V
@@ -148,66 +190,64 @@ func (sm *safeMap[T, V]) Get(k T) (V, bool) {
 	return v, ok
 }
 
-func scheduler(o *opts, cerr chan error) {
-	var db *sql.DB
-	var err error
-	var conn string
-	if o.conn != "" {
-		conn = o.conn
-	} else {
-		if o.memory {
-			conn = memoryConn
-		} else {
-			conn = fileConn
-		}
-	}
+func (sm *safeMap[T, V]) Delete(k T) {
+	sm.Lock()
+	delete(sm.m, k)
+	sm.Unlock()
+}
 
-	if o.memory {
-		db, err = sql.Open("sqlite3", conn)
-		if err != nil {
-			cerr <- err
-			return
-		}
-	} else {
-		if o.path == "" {
-			cerr <- fmt.Errorf("path is required")
-			return
-		}
-		db, err = sql.Open("sqlite3", fmt.Sprintf(conn, o.path))
-		if err != nil {
-			cerr <- err
-			return
-		}
+func (c *ComfyDB) New(fn SqlFn) uint64 {
+	item := workItem{
+		id: c.count.Add(1),
+		fn: fn,
 	}
+	c.ringBuffer.Push(item)
+	c.safeBuffer.Set(item.id, false)
+	return item.id
+}
 
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+func (c *ComfyDB) Clear(id uint64) {
+	c.safeBuffer.Delete(id)
+	c.safeChan.Delete(id)
+}
 
-	for {
-		select {
-		case <-ticker.C:
-			if ringBuffer.Len() == 0 {
-				// todo @droman: add a counter to alternate the execution
-				runtime.Gosched()
-				time.Sleep(10 * time.Microsecond)
-				continue
-			}
-			cb, ok := ringBuffer.Pop()
-			if !ok {
-				continue
-			}
-			res, err := cb.fn(db)
-			if err != nil {
-				slog.Error("Error executing query", err)
-				safeChan.Set(cb.id, err)
-			} else {
-				safeChan.Set(cb.id, res)
-			}
-			safeBuffer.Set(cb.id, true)
-		case <-shutdown:
-			ticker.Stop()
-			db.Close()
-			return
-		}
+func (c *ComfyDB) IsDone(workID uint64) bool {
+	v, ok := c.safeBuffer.Get(workID)
+	if !ok {
+		return false
 	}
+	return v
+}
+
+func (c *ComfyDB) WaitFor(workID uint64) <-chan interface{} {
+	var cn interface{}
+	var fine bool
+	var future chan interface{} = make(chan interface{})
+	loopTicker := time.NewTicker(10 * time.Microsecond)
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-loopTicker.C:
+				value, ok := c.safeBuffer.Get(workID)
+				if !ok {
+					runtime.Gosched()
+					time.Sleep(10 * time.Microsecond)
+					continue
+				}
+				if value {
+					cn, fine = c.safeChan.Get(workID)
+					if fine {
+						loopTicker.Stop()
+					}
+					future <- cn
+					done <- true
+					close(done)
+				}
+			}
+		}
+	}()
+	return future
 }

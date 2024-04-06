@@ -12,47 +12,54 @@ import (
 )
 
 func TestMemory(t *testing.T) {
-	Initialize(WithMemory())
-	defer Close()
+
+	comfyMe, err := Comfy(
+		WithMemory(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer comfyMe.Close()
 
 	chnCreate := make(chan uint64)
 	go func() {
-		chnCreate <- New(func(db *sql.DB) (interface{}, error) {
+		chnCreate <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			return db.Exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
 		})
 	}()
 	createID := <-chnCreate
-	<-WaitFor(createID)
+	<-comfyMe.WaitFor(createID)
 
 	go func() {
 		chnInsert := make(chan uint64)
 		go func() {
-			chnInsert <- New(func(db *sql.DB) (interface{}, error) {
+			chnInsert <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 				return db.Exec("INSERT INTO users (name) VALUES (?)", "Jane Smith")
 			})
 		}()
 		insertID := <-chnInsert
-		<-WaitFor(insertID)
+		<-comfyMe.WaitFor(insertID)
 	}()
 
 	chnInsertDoe := make(chan uint64)
 
 	go func() {
-		chnInsertDoe <- New(func(db *sql.DB) (interface{}, error) {
+		chnInsertDoe <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			return db.Exec("INSERT INTO users (name) VALUES (?)", "Doe Smith")
 		})
 	}()
 	insertDoeID := <-chnInsertDoe
 
-	chnInsertMain := New(func(db *sql.DB) (interface{}, error) {
+	chnInsertMain := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec("INSERT INTO users (name) VALUES (?)", "John Doe")
 	})
-	<-WaitFor(chnInsertMain)
-	<-WaitFor(insertDoeID)
+	<-comfyMe.WaitFor(chnInsertMain)
+	<-comfyMe.WaitFor(insertDoeID)
 
 	chnSelect := make(chan uint64)
 	go func() {
-		chnSelect <- New(func(db *sql.DB) (interface{}, error) {
+		chnSelect <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			names := []string{}
 			rows, err := db.Query("SELECT name FROM users")
 			if err != nil {
@@ -71,7 +78,7 @@ func TestMemory(t *testing.T) {
 		})
 	}()
 
-	selectMainID := New(func(db *sql.DB) (interface{}, error) {
+	selectMainID := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		names := []string{}
 		rows, err := db.Query("SELECT name FROM users")
 		if err != nil {
@@ -88,9 +95,9 @@ func TestMemory(t *testing.T) {
 		}
 		return names, nil
 	})
-	resultMainUsers := <-WaitFor(selectMainID)
+	resultMainUsers := <-comfyMe.WaitFor(selectMainID)
 	selectGoID := <-chnSelect // almost same time, see if we got our select from the previous goroutine
-	resultFromGo := <-WaitFor(selectGoID)
+	resultFromGo := <-comfyMe.WaitFor(selectGoID)
 	var names []string
 
 	switch dd := resultMainUsers.(type) {
@@ -153,47 +160,53 @@ func TestFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	Initialize(WithPath("test.db"))
-	defer Close()
+	comfyMe, err := Comfy(
+		WithPath("test.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer comfyMe.Close()
 
 	chnCreate := make(chan uint64)
 	go func() {
-		chnCreate <- New(func(db *sql.DB) (interface{}, error) {
+		chnCreate <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			return db.Exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
 		})
 	}()
 	createID := <-chnCreate
-	<-WaitFor(createID)
+	<-comfyMe.WaitFor(createID)
 
 	go func() {
 		chnInsert := make(chan uint64)
 		go func() {
-			chnInsert <- New(func(db *sql.DB) (interface{}, error) {
+			chnInsert <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 				return db.Exec("INSERT INTO users (name) VALUES (?)", "Jane Smith")
 			})
 		}()
 		insertID := <-chnInsert
-		<-WaitFor(insertID)
+		<-comfyMe.WaitFor(insertID)
 	}()
 
 	chnInsertDoe := make(chan uint64)
 
 	go func() {
-		chnInsertDoe <- New(func(db *sql.DB) (interface{}, error) {
+		chnInsertDoe <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			return db.Exec("INSERT INTO users (name) VALUES (?)", "Doe Smith")
 		})
 	}()
 	insertDoeID := <-chnInsertDoe
 
-	chnInsertMain := New(func(db *sql.DB) (interface{}, error) {
+	chnInsertMain := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec("INSERT INTO users (name) VALUES (?)", "John Doe")
 	})
-	<-WaitFor(chnInsertMain)
-	<-WaitFor(insertDoeID)
+	<-comfyMe.WaitFor(chnInsertMain)
+	<-comfyMe.WaitFor(insertDoeID)
 
 	chnSelect := make(chan uint64)
 	go func() {
-		chnSelect <- New(func(db *sql.DB) (interface{}, error) {
+		chnSelect <- comfyMe.New(func(db *sql.DB) (interface{}, error) {
 			names := []string{}
 			rows, err := db.Query("SELECT name FROM users")
 			if err != nil {
@@ -212,7 +225,7 @@ func TestFile(t *testing.T) {
 		})
 	}()
 
-	selectMainID := New(func(db *sql.DB) (interface{}, error) {
+	selectMainID := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		names := []string{}
 		rows, err := db.Query("SELECT name FROM users")
 		if err != nil {
@@ -229,9 +242,9 @@ func TestFile(t *testing.T) {
 		}
 		return names, nil
 	})
-	resultMainUsers := <-WaitFor(selectMainID)
+	resultMainUsers := <-comfyMe.WaitFor(selectMainID)
 	selectGoID := <-chnSelect // almost same time, see if we got our select from the previous goroutine
-	resultFromGo := <-WaitFor(selectGoID)
+	resultFromGo := <-comfyMe.WaitFor(selectGoID)
 	var names []string
 
 	switch dd := resultMainUsers.(type) {
@@ -296,21 +309,29 @@ func randomSleep() {
 // I know they are doing concurrent writes but that's the point of this test
 // They want concurrent writes when I was the have the illusion of it
 func TestLockedGist(t *testing.T) {
-	Initialize(WithMemory())
-	defer Close()
+
+	comfyMe, err := Comfy(
+		WithMemory(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer comfyMe.Close()
 
 	done := make(chan struct{})
 
-	id := New(func(db *sql.DB) (interface{}, error) {
+	id := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		_, err := db.Exec(setupSql)
 		return nil, err
 	})
-	<-WaitFor(id)
+	<-comfyMe.WaitFor(id)
 
-	id = New(func(db *sql.DB) (interface{}, error) {
+	id = comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec(`INSERT INTO products (product_name) VALUES ("computer")`)
 	})
-	<-WaitFor(id)
+	<-comfyMe.WaitFor(id)
+	comfyMe.Clear(id)
 
 	writesIDs := []uint64{}
 	readsIDs := []uint64{}
@@ -325,7 +346,7 @@ func TestLockedGist(t *testing.T) {
 	go func() {
 		// writes to users table
 		for i := 0; i < routines; i++ {
-			writesIDs = append(writesIDs, New(insertWithID(i)))
+			writesIDs = append(writesIDs, comfyMe.New(insertWithID(i)))
 			randomSleep()
 		}
 		done <- struct{}{}
@@ -335,7 +356,7 @@ func TestLockedGist(t *testing.T) {
 		// reads from products table, each read in separate go routine
 		for i := 0; i < routines; i++ {
 			go func(i, routines int) {
-				readsIDs = append(readsIDs, New(func(db *sql.DB) (interface{}, error) {
+				readsIDs = append(readsIDs, comfyMe.New(func(db *sql.DB) (interface{}, error) {
 					rows, err := db.Query("SELECT * FROM products WHERE id = 5")
 					if err != nil {
 						return nil, err
@@ -386,7 +407,7 @@ func TestLockedGist(t *testing.T) {
 	}
 
 	// for _, v := range readsIDs {
-	// 	result := <-WaitFor(v)
+	// 	result := <-comfyMe.WaitFor(v)
 	// 	switch dd := result.(type) {
 	// 	case []map[string]interface{}:
 	// 		// fmt.Println(dd)
