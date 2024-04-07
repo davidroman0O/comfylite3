@@ -82,6 +82,7 @@ func TestMigration(t *testing.T) {
 	var superComfy *comfylite3.ComfyDB
 	var err error
 	if superComfy, err = comfylite3.Comfy(
+		// comfylite3.WithPath("./test.db"),
 		comfylite3.WithMemory(),
 		comfylite3.WithMigration(memoryMigrations...),
 	); err != nil {
@@ -277,89 +278,13 @@ func TestMigration(t *testing.T) {
 		}
 	}
 
-	// check all columns
+	if err = superComfy.Down(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
 
-	// var productCols []comfylite3.Column
-
-	// // TWO UP
-	// if err = superComfy.Up(context.Background()); err != nil {
-	// 	t.Fatal(err)
-	// }
-
-	// if tables, err = superComfy.ShowTables(); err != nil {
-	// 	t.Fatal(err)
-	// }
-
-	// if productCols, err = superComfy.ShowColumns("products"); err != nil {
-	// 	t.Fatal(err)
-	// }
-
-	// if len(tables) == 0 {
-	// 	t.Fatalf("expected tables, got %d", len(tables))
-	// }
-
-	// if len(tables) != 5 {
-	// 	t.Fatalf("expected 5 tables, got %d", len(tables))
-	// }
-
-	// for _, table := range tables {
-	// 	if table != "_migrations" && table != "sqlite_sequence" && table != "users" && table != "products" && table != "new_table" {
-	// 		t.Fatalf("expected _migrations or sqlite_sequence, got %s", table)
-	// 	}
-	// }
-
-	// // Check all columns id, name, user_id, new_column
-	// if len(productCols) != 4 {
-	// 	t.Fatalf("expected 4 columns, got %d", len(productCols))
-	// }
-	// for _, col := range productCols {
-	// 	if col.Name != "id" && col.Name != "name" && col.Name != "user_id" && col.Name != "new_column" {
-	// 		t.Fatalf("expected id, name, user_id, new_column, got %s", col.Name)
-	// 	}
-	// }
-
-	// slog.Info("get version")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Version())
-	// slog.Info("get index")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Index())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going up")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Up(context.Background()))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going up")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Up(context.Background()))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going down")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Down(context.Background(), 1))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going down")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Down(context.Background(), 1))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going up")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Up(context.Background()))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going down")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Down(context.Background(), 1))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
-	// slog.Info("going up")
-	// fmt.Println(superComfy.ShowTables())
-	// fmt.Println(superComfy.Up(context.Background()))
-	// fmt.Println(superComfy.Migrations())
-	// fmt.Println(superComfy.ShowTables())
+	if err = superComfy.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMemory(t *testing.T) {

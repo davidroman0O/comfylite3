@@ -35,9 +35,6 @@ const memoryConn = "file::memory:?_mutex=full&cache=shared&_timeout=5000"
 // Default File Connection
 const fileConn = "file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000"
 
-// yup that quite original
-const migrationTable = "_migrations"
-
 type Migration struct {
 	Version uint
 	Label   string
@@ -65,7 +62,8 @@ type ComfyDB struct {
 	ticker     *time.Ticker
 	count      atomic.Uint64
 
-	migrations []Migration
+	migrations         []Migration
+	migrationTableName string
 
 	memory bool
 	path   string
@@ -74,9 +72,16 @@ type ComfyDB struct {
 
 type ComfyOption func(*ComfyDB)
 
+func WithMigrationTableName(name string) ComfyOption {
+	return func(o *ComfyDB) {
+		o.migrationTableName = name
+	}
+}
+
 func WithPath(path string) ComfyOption {
 	return func(o *ComfyDB) {
 		o.path = path
+		o.memory = false
 	}
 }
 
@@ -114,12 +119,12 @@ func (c *ComfyDB) Close() {
 
 func (c *ComfyDB) prepareMigration() error {
 	newTableID := c.New(func(db *sql.DB) (interface{}, error) {
-		_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS _migrations (
+		_, err := db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %v (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			version INTEGER UNIQUE NOT NULL,
 			description VARCHAR(255) UNIQUE NOT NULL
-		)`)
+		)`, c.migrationTableName))
 		return nil, err
 	})
 	result := <-c.WaitFor(newTableID)
@@ -186,7 +191,6 @@ func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
 		}
 		defer rows.Close()
 		var cols []Column
-		fmt.Println("table", table)
 		for rows.Next() {
 			var col Column
 			// cid name type notnull dflt_value pk
@@ -244,7 +248,7 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 			migrationExists[migration.Version] = true
 
 			if slices.Contains(index, migration.Version) {
-				fmt.Printf("skipping migration: (version=%v, label=%s) already exists\n", migration.Version, migration.Label)
+				// fmt.Printf("skipping migration: (version=%v, label=%s) already exists\n", migration.Version, migration.Label)
 				continue
 			}
 
@@ -252,11 +256,11 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 				return nil, err
 			}
 
-			if _, err := tx.ExecContext(ctx, "INSERT INTO _migrations (version, description) VALUES (?, ?)", migration.Version, migration.Label); err != nil {
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf("INSERT INTO %v (version, description) VALUES (?, ?)", c.migrationTableName), migration.Version, migration.Label); err != nil {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, description=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			fmt.Printf("migrated database up (version=%v, label=%s)\n", migration.Version, migration.Label)
+			// fmt.Printf("migrated database up (version=%v, label=%s)\n", migration.Version, migration.Label)
 		}
 		return nil, tx.Commit()
 	})
@@ -316,11 +320,11 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 				return nil, err
 			}
 
-			if _, err := tx.ExecContext(ctx, "DELETE FROM _migrations WHERE version = ?", migration.Version); err != nil {
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %v WHERE version = ?", c.migrationTableName), migration.Version); err != nil {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, label=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			fmt.Printf("migrated database down (version=%v, label=%s)\n", migration.Version, migration.Label)
+			// fmt.Printf("migrated database down (version=%v, label=%s)\n", migration.Version, migration.Label)
 		}
 
 		return nil, tx.Commit()
@@ -337,7 +341,7 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 func (c *ComfyDB) Migrations() ([]Migration, error) {
 	migrationsID := c.New(func(db *sql.DB) (interface{}, error) {
 		var migrations []Migration
-		rows, err := db.Query("SELECT version, description FROM _migrations ORDER BY version ASC")
+		rows, err := db.Query(fmt.Sprintf("SELECT version, description FROM %v ORDER BY version ASC", c.migrationTableName))
 		if err != nil {
 			return nil, err
 		}
@@ -372,7 +376,7 @@ func (c *ComfyDB) Migrations() ([]Migration, error) {
 func (c *ComfyDB) Version() (uint, error) {
 	versionID := c.New(func(db *sql.DB) (interface{}, error) {
 		var version uint
-		row := db.QueryRow("SELECT version FROM _migrations ORDER BY version DESC LIMIT 1")
+		row := db.QueryRow(fmt.Sprintf("SELECT version FROM %v ORDER BY version DESC LIMIT 1", c.migrationTableName))
 		err := row.Scan(&version)
 		return version, err
 	})
@@ -393,7 +397,7 @@ func (c *ComfyDB) Version() (uint, error) {
 func (c *ComfyDB) Index() ([]uint, error) {
 	currentIndexID := c.New(func(db *sql.DB) (interface{}, error) {
 		var versions []uint
-		rows, err := db.Query("SELECT version FROM _migrations ORDER BY version ASC")
+		rows, err := db.Query(fmt.Sprintf("SELECT version FROM %v ORDER BY version ASC", c.migrationTableName))
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +436,8 @@ func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
 		ticker:     time.NewTicker(1 * time.Microsecond),
 		memory:     true,
 
-		migrations: []Migration{},
+		migrations:         []Migration{},
+		migrationTableName: "_migrations",
 	}
 
 	c.count.Store(1)
