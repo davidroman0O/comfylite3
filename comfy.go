@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
-	"log/slog"
 	"runtime"
 	"slices"
 	"sort"
@@ -114,24 +112,95 @@ func (c *ComfyDB) Close() {
 
 func (c *ComfyDB) prepareMigration() error {
 	newTableID := c.New(func(db *sql.DB) (interface{}, error) {
-		return db.Exec(`
-		CREATE TABLE IF NOT EXISTS ? (
+		_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS _migrations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			version INTEGER UNIQUE NOT NULL,
 			description VARCHAR(255) UNIQUE NOT NULL
-		)`, migrationTable)
+		)`)
+		return nil, err
 	})
-	<-c.WaitFor(newTableID)
-	return nil
+	result := <-c.WaitFor(newTableID)
+	switch value := result.(type) {
+	case error:
+		return value
+	default:
+		return nil
+	}
 }
 
 func (c *ComfyDB) sort() []Migration {
 	cp := []Migration{}
-	copy(cp, c.migrations)
+	cp = append(cp, c.migrations...)
 	sort.Slice(cp, func(i, j int) bool {
 		return cp[i].Version < cp[j].Version
 	})
 	return cp
+}
+
+func (c *ComfyDB) ShowTables() ([]string, error) {
+	tablesID := c.New(func(db *sql.DB) (interface{}, error) {
+		rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var tables []string
+		for rows.Next() {
+			var table string
+			if err := rows.Scan(&table); err != nil {
+				return nil, err
+			}
+			tables = append(tables, table)
+		}
+		return tables, nil
+	})
+	result := <-c.WaitFor(tablesID)
+	switch value := result.(type) {
+	case error:
+		return nil, value
+	case []string:
+		return value, nil
+	default:
+		return nil, fmt.Errorf("unexpected type")
+	}
+}
+
+type Column struct {
+	CID      int
+	Name     string
+	Type     string
+	Nullable bool
+	Default  string
+	Pk       bool
+}
+
+func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
+	tablesID := c.New(func(db *sql.DB) (interface{}, error) {
+		rows, err := db.Query("PRAGMA table_info('?');", table)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var cols []Column
+		for rows.Next() {
+			var col Column
+			if err := rows.Scan(&col.CID, &col.Name, &col.Type, &col.Nullable, &col.Default, &col.Pk); err != nil {
+				return nil, err
+			}
+			cols = append(cols, col)
+		}
+		return cols, nil
+	})
+	result := <-c.WaitFor(tablesID)
+	switch value := result.(type) {
+	case error:
+		return nil, value
+	case []Column:
+		return value, nil
+	default:
+		return nil, fmt.Errorf("unexpected type")
+	}
 }
 
 func (c *ComfyDB) Up(ctx context.Context) error {
@@ -170,7 +239,7 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 			migrationExists[migration.Version] = true
 
 			if slices.Contains(index, migration.Version) {
-				log.Printf("skipping migration: (version=%v, label=%s) already exists", migration.Version, migration.Label)
+				fmt.Printf("skipping migration: (version=%v, label=%s) already exists", migration.Version, migration.Label)
 				continue
 			}
 
@@ -178,11 +247,11 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 				return nil, err
 			}
 
-			if _, err := tx.ExecContext(ctx, "INSERT INTO ? (version, description) VALUES (?, ?)", migrationTable, migration.Version, migration.Label); err != nil {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO _migrations (version, description) VALUES (?, ?)", migration.Version, migration.Label); err != nil {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, description=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			log.Printf("migrated database up (version=%v, label=%s)", migration.Version, migration.Label)
+			fmt.Printf("migrated database up (version=%v, label=%s)", migration.Version, migration.Label)
 		}
 		return nil, tx.Commit()
 	})
@@ -242,11 +311,11 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 				return nil, err
 			}
 
-			if _, err := tx.ExecContext(ctx, "DELETE FROM ? WHERE version = ?", migration.Version, migration.Label); err != nil {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM _migrations WHERE version = ?", migration.Version); err != nil {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, label=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			log.Printf("migrated database down (version=%v, label=%s)", migration.Version, migration.Label)
+			fmt.Printf("migrated database down (version=%v, label=%s)", migration.Version, migration.Label)
 		}
 
 		return nil, tx.Commit()
@@ -260,16 +329,54 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 	}
 }
 
+func (c *ComfyDB) Migrations() ([]Migration, error) {
+	migrationsID := c.New(func(db *sql.DB) (interface{}, error) {
+		var migrations []Migration
+		rows, err := db.Query("SELECT version, description FROM _migrations ORDER BY version ASC")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var version uint
+			var description string
+			if err := rows.Scan(&version, &description); err != nil {
+				return nil, err
+			}
+			migrations = append(migrations, Migration{
+				Version: version,
+				Label:   description,
+			})
+		}
+		return migrations, nil
+	})
+	result := <-c.WaitFor(migrationsID)
+	switch value := result.(type) {
+	case error:
+		if value == sql.ErrNoRows {
+			return []Migration{}, nil
+		}
+		return nil, value
+	case []Migration:
+		return value, nil
+	default:
+		return nil, fmt.Errorf("unexpected type")
+	}
+}
+
 func (c *ComfyDB) Version() (uint, error) {
 	versionID := c.New(func(db *sql.DB) (interface{}, error) {
 		var version uint
-		row := db.QueryRow("SELECT version FROM ? ORDER BY version DESC LIMIT 1", migrationTable)
+		row := db.QueryRow("SELECT version FROM _migrations ORDER BY version DESC LIMIT 1")
 		err := row.Scan(&version)
 		return version, err
 	})
 	result := <-c.WaitFor(versionID)
 	switch value := result.(type) {
 	case error:
+		if value == sql.ErrNoRows {
+			return 0, nil
+		}
 		return 0, result.(error)
 	case uint:
 		return value, nil
@@ -281,7 +388,7 @@ func (c *ComfyDB) Version() (uint, error) {
 func (c *ComfyDB) Index() ([]uint, error) {
 	currentIndexID := c.New(func(db *sql.DB) (interface{}, error) {
 		var versions []uint
-		rows, err := db.Query("SELECT version FROM ? ORDER BY version ASC", migrationTable)
+		rows, err := db.Query("SELECT version FROM _migrations ORDER BY version ASC")
 		if err != nil {
 			return nil, err
 		}
@@ -298,6 +405,9 @@ func (c *ComfyDB) Index() ([]uint, error) {
 	result := <-c.WaitFor(currentIndexID)
 	switch value := result.(type) {
 	case error:
+		if value == sql.ErrNoRows {
+			return []uint{}, nil
+		}
 		return nil, value
 	case []uint:
 		return value, nil
@@ -324,10 +434,6 @@ func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
 
 	for _, opt := range opts {
 		opt(c)
-	}
-
-	if err := c.prepareMigration(); err != nil {
-		return nil, err
 	}
 
 	c.id = dbCount.Add(1)
@@ -383,7 +489,6 @@ func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
 				}
 				res, err := cb.fn(instance.db)
 				if err != nil {
-					slog.Error("Error executing query", err)
 					instance.safeChan.Set(cb.id, err)
 				} else {
 					instance.safeChan.Set(cb.id, res)
@@ -398,6 +503,10 @@ func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
 
 	err := <-c.errors
 	if err != nil {
+		return nil, err
+	}
+
+	if err := c.prepareMigration(); err != nil {
 		return nil, err
 	}
 

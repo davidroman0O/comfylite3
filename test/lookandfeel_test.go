@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"testing"
 	"time"
@@ -17,24 +18,121 @@ var memoryMigrations []comfylite3.Migration = []comfylite3.Migration{
 		1,
 		"genesis",
 		func(tx *sql.Tx) error {
-			_, err := tx.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
-			return err
-		},
-		func(tx *sql.Tx) error {
-			return nil
-		}),
-	comfylite3.NewMigration(
-		2,
-		"new_table",
-		func(tx *sql.Tx) error {
+			if _, err := tx.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+				return err
+			}
 			if _, err := tx.Exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id))"); err != nil {
 				return err
 			}
 			return nil
 		},
 		func(tx *sql.Tx) error {
+			// undo previous up function
+			if _, err := tx.Exec("DROP TABLE users"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("DROP TABLE products"); err != nil {
+				return err
+			}
 			return nil
 		}),
+	comfylite3.NewMigration(
+		2,
+		"new_table",
+		func(tx *sql.Tx) error {
+			if _, err := tx.Exec("ALTER TABLE products ADD COLUMN new_column TEXT"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("CREATE TABLE new_table (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			// undo previous up function
+			if _, err := tx.Exec("ALTER TABLE products DROP COLUMN new_column"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("DROP TABLE new_table"); err != nil {
+				return err
+			}
+			return nil
+		}),
+	comfylite3.NewMigration(
+		3,
+		"new_random",
+		func(tx *sql.Tx) error {
+			// remove new_column from products
+			if _, err := tx.Exec("ALTER TABLE products DROP COLUMN new_column"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			// add new_column to products
+			if _, err := tx.Exec("ALTER TABLE products ADD COLUMN new_column TEXT"); err != nil {
+				return err
+			}
+			return nil
+		},
+	),
+}
+
+func TestMigration(t *testing.T) {
+
+	var superComfy *comfylite3.ComfyDB
+	var err error
+	if superComfy, err = comfylite3.Comfy(
+		comfylite3.WithMemory(),
+		comfylite3.WithMigration(memoryMigrations...),
+	); err != nil {
+		panic(err)
+	}
+
+	defer superComfy.Close()
+
+	slog.Info("get version")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Version())
+	slog.Info("get index")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Index())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going up")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Up(context.Background()))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going up")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Up(context.Background()))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going down")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Down(context.Background(), 1))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going down")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Down(context.Background(), 1))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going up")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Up(context.Background()))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going down")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Down(context.Background(), 1))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
+	slog.Info("going up")
+	fmt.Println(superComfy.ShowTables())
+	fmt.Println(superComfy.Up(context.Background()))
+	fmt.Println(superComfy.Migrations())
+	fmt.Println(superComfy.ShowTables())
 }
 
 func TestMemory(t *testing.T) {
@@ -43,7 +141,6 @@ func TestMemory(t *testing.T) {
 	var err error
 	if superComfy, err = comfylite3.Comfy(
 		comfylite3.WithMemory(),
-		comfylite3.WithMigration(memoryMigrations...),
 	); err != nil {
 		panic(err)
 	}
