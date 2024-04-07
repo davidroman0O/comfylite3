@@ -34,6 +34,8 @@ comfylite3.WithConnection("file:/tmp/adventurousComfy.db?cache=shared")
 
 ## What you can do
 
+Very simplistic API, `comfylite3` manage when to execute and you do as usual. I'm just judging how you will wrap that library!
+
 ```go
 
 // Create a new comfy database for `sqlite3`
@@ -60,6 +62,104 @@ switch result.(type) {
 	case error:
 		fmt.Println("Oooh your query failed!", err)
 }
+
+```
+
+## Migrations
+
+Migrations is important and `sqlite` is a specific type of database, and it support migrations!
+
+```go
+
+// Let's imagine a set of migrations
+var memoryMigrations []comfylite3.Migration = []comfylite3.Migration{
+	comfylite3.NewMigration(
+		1,
+		"genesis",
+		func(tx *sql.Tx) error {
+			if _, err := tx.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id))"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			// undo previous up function
+			if _, err := tx.Exec("DROP TABLE users"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("DROP TABLE products"); err != nil {
+				return err
+			}
+			return nil
+		}),
+	comfylite3.NewMigration(
+		2,
+		"new_table",
+		func(tx *sql.Tx) error {
+			if _, err := tx.Exec("ALTER TABLE products ADD COLUMN new_column TEXT"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("CREATE TABLE new_table (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			// undo previous up function
+			if _, err := tx.Exec("ALTER TABLE products DROP COLUMN new_column"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("DROP TABLE new_table"); err != nil {
+				return err
+			}
+			return nil
+		}),
+	comfylite3.NewMigration(
+		3,
+		"new_random",
+		func(tx *sql.Tx) error {
+			// remove new_column from products
+			if _, err := tx.Exec("ALTER TABLE products DROP COLUMN new_column"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			// add new_column to products
+			if _, err := tx.Exec("ALTER TABLE products ADD COLUMN new_column TEXT"); err != nil {
+				return err
+			}
+			return nil
+		},
+	),
+}
+
+// create and add your migrations
+comfyDB, _ := comfylite3.Comfy(
+		comfylite3.WithMemory(),
+		comfylite3.WithMigration(memoryMigrations...),
+		comfylite3.WithMigrationTableName("_migrations"), // even customize your migration table!
+	)
+
+// Migrations Up and Down are easy
+
+// Up to the top!
+if err := comfyDB.Up(context.Background()); err != nil {
+	panic(err)
+}
+
+// Specify how many down you want to do
+if err := comfyDB.Down(context.Background(), 1); err != nil {
+	panic(err)
+}
+
+comfyDB.Version() // return all the existing versions []uint
+comfyDB.Index() // return the current index of the migration
+comfyDB.ShowTables() // return all table names
+comfyDB.ShowColumns("name") // return columns data of one table
 
 ```
 

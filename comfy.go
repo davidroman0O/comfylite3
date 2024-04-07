@@ -14,8 +14,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// TODO @droman: add logger
-
 var dbCount atomic.Uint64
 
 func init() {
