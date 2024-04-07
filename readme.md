@@ -6,7 +6,7 @@ That's why `comfylite3` exists! Just throw your queries at it and your `sql` wil
 
 *: eventually!
 
-![Gopher Comfy](./docs/gopher%20comfy.webp)
+![Gopher Comfy](./docs/gophercomfy.webp)
 
 
 # Install 
