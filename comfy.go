@@ -22,6 +22,7 @@ func init() {
 	dbCount.Store(0)
 }
 
+// Callback provided by a developer to be executed when the scheduler is ready for it
 type SqlFn func(db *sql.DB) (interface{}, error)
 
 type workItem struct {
@@ -42,6 +43,7 @@ type Migration struct {
 	Down    func(tx *sql.Tx) error
 }
 
+// Create a new migration with a version, label, and up and down functions.
 func NewMigration(version uint, label string, up, down func(tx *sql.Tx) error) Migration {
 	return Migration{
 		Version: version,
@@ -51,6 +53,9 @@ func NewMigration(version uint, label string, up, down func(tx *sql.Tx) error) M
 	}
 }
 
+// ComfyDB is a wrapper around sqlite3 that provides a simple API for executing SQL queries with goroutines.
+// It also provides a simple API for managing migrations.
+// Goodbye frustrations with sqlite3 and goroutines.
 type ComfyDB struct {
 	id         uint64
 	db         *sql.DB
@@ -72,12 +77,14 @@ type ComfyDB struct {
 
 type ComfyOption func(*ComfyDB)
 
+// WithMigrationTableName sets the name of the migration table.
 func WithMigrationTableName(name string) ComfyOption {
 	return func(o *ComfyDB) {
 		o.migrationTableName = name
 	}
 }
 
+// WithPath sets the path of the database file.
 func WithPath(path string) ComfyOption {
 	return func(o *ComfyDB) {
 		o.path = path
@@ -85,24 +92,29 @@ func WithPath(path string) ComfyOption {
 	}
 }
 
+// WithMemory sets the database to be in-memory.
 func WithMemory() ComfyOption {
 	return func(o *ComfyDB) {
 		o.memory = true
 	}
 }
 
+// WithConnection sets a custom connection string for the database.
 func WithConnection(conn string) ComfyOption {
 	return func(o *ComfyDB) {
 		o.conn = conn
 	}
 }
 
+// WithBuffer sets the size of the ring buffer which is used by the scheduler to process your queries. (default=1024)
+// If the buffer is full, it will create a second one of that size value automatically.
 func WithBuffer(size int64) ComfyOption {
 	return func(c *ComfyDB) {
 		c.ringBuffer = Buffer[workItem](size)
 	}
 }
 
+// Records your migrations for your database.
 func WithMigration(migrations ...Migration) ComfyOption {
 	return func(c *ComfyDB) {
 		// I think it's pretty comfy to have in your code all your migrations are a dummy array
@@ -110,6 +122,7 @@ func WithMigration(migrations ...Migration) ComfyOption {
 	}
 }
 
+// Close the database connection.
 func (c *ComfyDB) Close() {
 	c.shutdown <- struct{}{}
 	close(c.shutdown)
@@ -117,6 +130,7 @@ func (c *ComfyDB) Close() {
 	c.db.Close()
 }
 
+// Prepare the eventual creation of the migration table.
 func (c *ComfyDB) prepareMigration() error {
 	newTableID := c.New(func(db *sql.DB) (interface{}, error) {
 		_, err := db.Exec(fmt.Sprintf(`
@@ -136,6 +150,7 @@ func (c *ComfyDB) prepareMigration() error {
 	}
 }
 
+// Sort the migrations by version.
 func (c *ComfyDB) sort() []Migration {
 	cp := []Migration{}
 	cp = append(cp, c.migrations...)
@@ -145,6 +160,8 @@ func (c *ComfyDB) sort() []Migration {
 	return cp
 }
 
+// Show all tables in the database.
+// Returns a slice of the names of the tables.
 func (c *ComfyDB) ShowTables() ([]string, error) {
 	tablesID := c.New(func(db *sql.DB) (interface{}, error) {
 		rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
@@ -173,7 +190,8 @@ func (c *ComfyDB) ShowTables() ([]string, error) {
 	}
 }
 
-// cid name type notnull dflt_value pk
+// Properties of one column in a table.
+// Columns: cid name type notnull dflt_value pk
 type Column struct {
 	CID       int
 	Name      string
@@ -183,6 +201,7 @@ type Column struct {
 	Pk        bool
 }
 
+// Show all columns in a table.
 func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
 	tablesID := c.New(func(db *sql.DB) (interface{}, error) {
 		rows, err := db.Query(fmt.Sprintf("PRAGMA table_info('%v')", table))
@@ -212,6 +231,7 @@ func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
 	}
 }
 
+// Migrate up all the available migrations.
 func (c *ComfyDB) Up(ctx context.Context) error {
 	var err error
 	if err = c.prepareMigration(); err != nil {
@@ -273,6 +293,7 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 	}
 }
 
+// Migrate down using the amount of iterations to rollback.
 func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 
 	var err error
@@ -338,6 +359,7 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 	}
 }
 
+// Get all migrations.
 func (c *ComfyDB) Migrations() ([]Migration, error) {
 	migrationsID := c.New(func(db *sql.DB) (interface{}, error) {
 		var migrations []Migration
@@ -373,6 +395,7 @@ func (c *ComfyDB) Migrations() ([]Migration, error) {
 	}
 }
 
+// Get current version of the migrations.
 func (c *ComfyDB) Version() (uint, error) {
 	versionID := c.New(func(db *sql.DB) (interface{}, error) {
 		var version uint
@@ -394,6 +417,7 @@ func (c *ComfyDB) Version() (uint, error) {
 	}
 }
 
+// Get all versions of the migrations.
 func (c *ComfyDB) Index() ([]uint, error) {
 	currentIndexID := c.New(func(db *sql.DB) (interface{}, error) {
 		var versions []uint
@@ -425,6 +449,8 @@ func (c *ComfyDB) Index() ([]uint, error) {
 	}
 }
 
+// Create a new ComfyLite3 wrapper around sqlite3.
+// Instanciate a scheduler to process your queries.
 func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
 	c := &ComfyDB{
 		db:         nil,
@@ -557,11 +583,13 @@ func (c *ComfyDB) New(fn SqlFn) uint64 {
 	return item.id
 }
 
+// Clear the buffer and the channel for a specific workID.
 func (c *ComfyDB) Clear(id uint64) {
 	c.safeBuffer.Delete(id)
 	c.safeChan.Delete(id)
 }
 
+// Ask if a workID (your query) is done.
 func (c *ComfyDB) IsDone(workID uint64) bool {
 	v, ok := c.safeBuffer.Get(workID)
 	if !ok {
@@ -570,6 +598,7 @@ func (c *ComfyDB) IsDone(workID uint64) bool {
 	return v
 }
 
+// Wait or return the result of a workID (your query).
 func (c *ComfyDB) WaitFor(workID uint64) <-chan interface{} {
 	var cn interface{}
 	var fine bool
