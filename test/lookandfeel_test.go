@@ -11,11 +11,40 @@ import (
 	"github.com/davidroman0O/comfylite3"
 )
 
+// All migrations of the memory database
+var memoryMigrations []comfylite3.Migration = []comfylite3.Migration{
+	comfylite3.NewMigration(
+		1,
+		"genesis",
+		func(tx *sql.Tx) error {
+			_, err := tx.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+			return err
+		},
+		func(tx *sql.Tx) error {
+			return nil
+		}),
+	comfylite3.NewMigration(
+		2,
+		"new_table",
+		func(tx *sql.Tx) error {
+			if _, err := tx.Exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id))"); err != nil {
+				return err
+			}
+			return nil
+		},
+		func(tx *sql.Tx) error {
+			return nil
+		}),
+}
+
 func TestMemory(t *testing.T) {
 
 	var superComfy *comfylite3.ComfyDB
 	var err error
-	if superComfy, err = comfylite3.Comfy(comfylite3.WithMemory()); err != nil {
+	if superComfy, err = comfylite3.Comfy(
+		comfylite3.WithMemory(),
+		comfylite3.WithMigration(memoryMigrations...),
+	); err != nil {
 		panic(err)
 	}
 
