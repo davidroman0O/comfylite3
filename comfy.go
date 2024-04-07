@@ -14,6 +14,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// TODO @droman: add logger
+
 var dbCount atomic.Uint64
 
 func init() {
@@ -166,26 +168,29 @@ func (c *ComfyDB) ShowTables() ([]string, error) {
 	}
 }
 
+// cid name type notnull dflt_value pk
 type Column struct {
-	CID      int
-	Name     string
-	Type     string
-	Nullable bool
-	Default  string
-	Pk       bool
+	CID       int
+	Name      string
+	Type      string
+	NotNull   bool
+	DfltValue *string
+	Pk        bool
 }
 
 func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
 	tablesID := c.New(func(db *sql.DB) (interface{}, error) {
-		rows, err := db.Query("PRAGMA table_info('?');", table)
+		rows, err := db.Query(fmt.Sprintf("PRAGMA table_info('%v')", table))
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 		var cols []Column
+		fmt.Println("table", table)
 		for rows.Next() {
 			var col Column
-			if err := rows.Scan(&col.CID, &col.Name, &col.Type, &col.Nullable, &col.Default, &col.Pk); err != nil {
+			// cid name type notnull dflt_value pk
+			if err := rows.Scan(&col.CID, &col.Name, &col.Type, &col.NotNull, &col.DfltValue, &col.Pk); err != nil {
 				return nil, err
 			}
 			cols = append(cols, col)
@@ -239,7 +244,7 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 			migrationExists[migration.Version] = true
 
 			if slices.Contains(index, migration.Version) {
-				fmt.Printf("skipping migration: (version=%v, label=%s) already exists", migration.Version, migration.Label)
+				fmt.Printf("skipping migration: (version=%v, label=%s) already exists\n", migration.Version, migration.Label)
 				continue
 			}
 
@@ -251,7 +256,7 @@ func (c *ComfyDB) Up(ctx context.Context) error {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, description=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			fmt.Printf("migrated database up (version=%v, label=%s)", migration.Version, migration.Label)
+			fmt.Printf("migrated database up (version=%v, label=%s)\n", migration.Version, migration.Label)
 		}
 		return nil, tx.Commit()
 	})
@@ -315,7 +320,7 @@ func (c *ComfyDB) Down(ctx context.Context, amount int) error {
 				return nil, fmt.Errorf("failed to insert migration (version=%v, label=%s): %w", migration.Version, migration.Label, err)
 			}
 
-			fmt.Printf("migrated database down (version=%v, label=%s)", migration.Version, migration.Label)
+			fmt.Printf("migrated database down (version=%v, label=%s)\n", migration.Version, migration.Label)
 		}
 
 		return nil, tx.Commit()
