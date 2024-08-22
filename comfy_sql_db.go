@@ -23,7 +23,7 @@ func (c *ComfyDB) Ping() error {
 	}
 }
 
-func (c *ComfyDB) Being() (*sql.Tx, error) {
+func (c *ComfyDB) Begin() (*sql.Tx, error) {
 	txID := c.New(func(db *sql.DB) (interface{}, error) {
 		return db.Begin()
 	})
