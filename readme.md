@@ -15,6 +15,10 @@ That's why `comfylite3` exists! Just throw your queries at it and your `sql` wil
 go get -u github.com/davidroman0O/comfylite3
 ```
 
+# sql.DB
+
+`ComfyDB` is using all the functions of `sql.DB` so you can use as drop-in replacement!
+
 # API
 
 ## Memory or File or What you want!
@@ -39,7 +43,7 @@ Very simplistic API, `comfylite3` manage when to execute and you do as usual. I'
 ```go
 
 // Create a new comfy database for `sqlite3`
-comfyDB, _ := comfylite3.Comfy(comfylite3.WithMemory())
+comfyDB, _ := comfylite3.New(comfylite3.WithMemory())
 
 // Create future workload to cook
 id := comfyDB.New(func(db *sql.DB) (interface{}, error) {
@@ -138,7 +142,7 @@ var memoryMigrations []comfylite3.Migration = []comfylite3.Migration{
 }
 
 // create and add your migrations
-comfyDB, _ := comfylite3.Comfy(
+comfyDB, _ := comfylite3.New(
 		comfylite3.WithMemory(),
 		comfylite3.WithMigration(memoryMigrations...),
 		comfylite3.WithMigrationTableName("_migrations"), // even customize your migration table!
@@ -180,7 +184,7 @@ func main() {
 	var err error
 
     // Make yourself comfy
-	if superComfy, err = comfylite3.Comfy(comfylite3.WithMemory()); err != nil {
+	if superComfy, err = comfylite3.New(comfylite3.WithMemory()); err != nil {
 		panic(err)
 	}
 
@@ -229,7 +233,7 @@ func main() {
    
 	var superComfy *comfylite3.ComfyDB
 	var err error
-	if superComfy, err = comfylite3.Comfy(comfylite3.WithMemory()); err != nil {
+	if superComfy, err = comfylite3.New(comfylite3.WithMemory()); err != nil {
 		panic(err)
 	}
 

@@ -13,7 +13,7 @@ import (
 
 func TestMemory(t *testing.T) {
 
-	comfyMe, err := Comfy(
+	comfyMe, err := New(
 		WithMemory(),
 	)
 	if err != nil {
@@ -160,7 +160,7 @@ func TestFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	comfyMe, err := Comfy(
+	comfyMe, err := New(
 		WithPath("test.db"),
 	)
 	if err != nil {
@@ -310,7 +310,7 @@ func randomSleep() {
 // They want concurrent writes when I was the have the illusion of it
 func TestLockedGist(t *testing.T) {
 
-	comfyMe, err := Comfy(
+	comfyMe, err := New(
 		WithMemory(),
 	)
 	if err != nil {

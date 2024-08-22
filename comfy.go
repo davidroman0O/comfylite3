@@ -14,6 +14,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// func (c *ComfyDB) Register(name string) {
+// 	sql.Register(name, &ComfyDriver{comfy: c})
+// }
+
 var dbCount atomic.Uint64
 
 func init() {
@@ -121,11 +125,11 @@ func WithMigration(migrations ...Migration) ComfyOption {
 }
 
 // Close the database connection.
-func (c *ComfyDB) Close() {
+func (c *ComfyDB) Close() error {
 	c.shutdown <- struct{}{}
 	close(c.shutdown)
 	close(c.errors)
-	c.db.Close()
+	return c.db.Close()
 }
 
 // Prepare the eventual creation of the migration table.
@@ -449,7 +453,7 @@ func (c *ComfyDB) Index() ([]uint, error) {
 
 // Create a new ComfyLite3 wrapper around sqlite3.
 // Instanciate a scheduler to process your queries.
-func Comfy(opts ...ComfyOption) (*ComfyDB, error) {
+func New(opts ...ComfyOption) (*ComfyDB, error) {
 	c := &ComfyDB{
 		db:         nil,
 		ringBuffer: Buffer[workItem](1024),

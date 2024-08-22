@@ -81,7 +81,7 @@ func TestMigration(t *testing.T) {
 
 	var superComfy *comfylite3.ComfyDB
 	var err error
-	if superComfy, err = comfylite3.Comfy(
+	if superComfy, err = comfylite3.New(
 		// comfylite3.WithPath("./test.db"),
 		comfylite3.WithMemory(),
 		comfylite3.WithMigration(memoryMigrations...),
@@ -291,7 +291,7 @@ func TestMemory(t *testing.T) {
 
 	var superComfy *comfylite3.ComfyDB
 	var err error
-	if superComfy, err = comfylite3.Comfy(
+	if superComfy, err = comfylite3.New(
 		comfylite3.WithMemory(),
 	); err != nil {
 		panic(err)
@@ -370,3 +370,13 @@ func TestMemory(t *testing.T) {
 	average := float64(total) / float64(len(metrics))
 	fmt.Printf("Average: %.2f\n", average)
 }
+
+// func TestSqlDB(t *testing.T) {
+// 	var db *sql.DB
+
+// 	c, e := comfylite3.New(comfylite3.WithMemory())
+// 	if e != nil {
+// 		t.Fatal(e)
+// 	}
+
+// }
