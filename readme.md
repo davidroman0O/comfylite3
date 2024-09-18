@@ -126,9 +126,9 @@ func main() {
     // Use the OpenDB function to create a sql.DB instance with SQLite options
     db := comfylite3.OpenDB(
 		comfy, 
-		comfylite3.WithOpion("_fk=1"),
-		comfylite3.WithOpion("cache=shared"),
-		comfylite3.WithOpion("mode=rwc"),
+		comfylite3.WithOption("_fk=1"),
+		comfylite3.WithOption("cache=shared"),
+		comfylite3.WithOption("mode=rwc"),
 		comfylite3.WithForeignKeys(),
 	)
 
