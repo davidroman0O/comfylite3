@@ -147,23 +147,28 @@ func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
 		}
 	}
 
+	// Parse existing options
 	existingOptions := make(map[string]bool)
 	if strings.Contains(connStr, "?") {
 		parts := strings.SplitN(connStr, "?", 2)
 		connStr = parts[0]
 		for _, opt := range strings.Split(parts[1], "&") {
-			existingOptions[strings.SplitN(opt, "=", 2)[0]] = true
+			key := strings.SplitN(opt, "=", 2)[0]
+			existingOptions[key] = true
 		}
 	}
 
-	newOptions := []string{"_fk=1"}
+	// Add new options
+	newOptions := []string{}
 	for _, opt := range options {
 		key := strings.SplitN(opt, "=", 2)[0]
 		if !existingOptions[key] {
 			newOptions = append(newOptions, opt)
+			existingOptions[key] = true
 		}
 	}
 
+	// Append new options to connection string
 	if len(newOptions) > 0 {
 		if strings.Contains(connStr, "?") {
 			connStr += "&"
@@ -175,8 +180,16 @@ func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
 
 	fmt.Printf("Connection string: %s\n", connStr) // Debug print
 
-	return sql.OpenDB(&ComfyDriver{
+	db := sql.OpenDB(&ComfyDriver{
 		comfy:   comfy,
 		connStr: connStr,
 	})
+
+	// Explicitly enable foreign keys
+	_, err := db.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		fmt.Printf("Error setting foreign_keys pragma: %v\n", err)
+	}
+
+	return db
 }
