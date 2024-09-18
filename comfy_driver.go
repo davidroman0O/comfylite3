@@ -4,18 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"io"
+	"strings"
 )
 
 type ComfyDriver struct {
-	comfy *ComfyDB
+	comfy   *ComfyDB
+	connStr string
 }
 
 func (cd *ComfyDriver) Open(name string) (driver.Conn, error) {
-	return &comfyConn{comfy: cd.comfy}, nil
+	return &comfyConn{comfy: cd.comfy, connStr: cd.connStr}, nil
 }
 
-// Implement the driver.Connector interface
 func (cd *ComfyDriver) Connect(ctx context.Context) (driver.Conn, error) {
 	return cd.Open("")
 }
@@ -25,7 +27,8 @@ func (cd *ComfyDriver) Driver() driver.Driver {
 }
 
 type comfyConn struct {
-	comfy *ComfyDB
+	comfy   *ComfyDB
+	connStr string
 }
 
 func (cc *comfyConn) Prepare(query string) (driver.Stmt, error) {
@@ -132,6 +135,48 @@ func convertValues(vals []driver.Value) []interface{} {
 }
 
 // OpenDB creates a new sql.DB instance using ComfyDB
-func OpenDB(comfy *ComfyDB) *sql.DB {
-	return sql.OpenDB(&ComfyDriver{comfy: comfy})
+func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
+	connStr := comfy.conn
+
+	// If comfy.conn is empty, use the default connection string
+	if connStr == "" {
+		if comfy.memory {
+			connStr = "file::memory:"
+		} else {
+			connStr = fmt.Sprintf("file:%s", comfy.path)
+		}
+	}
+
+	existingOptions := make(map[string]bool)
+	if strings.Contains(connStr, "?") {
+		parts := strings.SplitN(connStr, "?", 2)
+		connStr = parts[0]
+		for _, opt := range strings.Split(parts[1], "&") {
+			existingOptions[strings.SplitN(opt, "=", 2)[0]] = true
+		}
+	}
+
+	newOptions := []string{"_fk=1"}
+	for _, opt := range options {
+		key := strings.SplitN(opt, "=", 2)[0]
+		if !existingOptions[key] {
+			newOptions = append(newOptions, opt)
+		}
+	}
+
+	if len(newOptions) > 0 {
+		if strings.Contains(connStr, "?") {
+			connStr += "&"
+		} else {
+			connStr += "?"
+		}
+		connStr += strings.Join(newOptions, "&")
+	}
+
+	fmt.Printf("Connection string: %s\n", connStr) // Debug print
+
+	return sql.OpenDB(&ComfyDriver{
+		comfy:   comfy,
+		connStr: connStr,
+	})
 }
