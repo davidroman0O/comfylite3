@@ -100,6 +100,62 @@ db := comfylite3.OpenDB(comfy, "_foreign_keys=on", "cache=shared")
 
 This feature makes ComfyLite3 more flexible and easier to use in a variety of scenarios, especially when working with existing codebases or third-party libraries.
 
+It can comes handy to integrate with other third-party like [ent](https://github.com/ent/ent), a powerful entity framework for Go. Here's how you can use ComfyLite3 as the underlying database for your ent client:
+
+```go
+import (
+    "context"
+    "log"
+
+    "github.com/davidroman0O/comfylite3"
+    "entgo.io/ent"
+    "entgo.io/ent/dialect"
+    "entgo.io/ent/dialect/sql"
+)
+
+func main() {
+    // Create a new ComfyDB instance
+    comfy, err := comfylite3.New(
+        comfylite3.WithPath("./ent.db"),
+    )
+    if err != nil {
+        log.Fatalf("failed creating ComfyDB: %v", err)
+    }
+    defer comfy.Close()
+
+    // Use the OpenDB function to create a sql.DB instance with SQLite options
+    db := comfylite3.OpenDB(comfy, "_fk=1", "cache=shared", "mode=rwc")
+
+    // Create a new ent client
+    client := ent.NewClient(ent.Driver(sql.OpenDB(dialect.SQLite, db)))
+    defer client.Close()
+
+    ctx := context.Background()
+
+    // Run the auto migration tool
+    if err := client.Schema.Create(ctx); err != nil {
+        log.Fatalf("failed creating schema resources: %v", err)
+    }
+
+    // Your ent operations go here
+    // For example:
+    // user, err := client.User.Create().SetName("John Doe").Save(ctx)
+    // if err != nil {
+    //     log.Fatalf("failed creating user: %v", err)
+    // }
+    // fmt.Printf("User created: %v\n", user)
+}
+```
+
+In this setup:
+
+1. We create a ComfyDB instance with a file-based SQLite database.
+2. We use `OpenDB` to create a standard `*sql.DB` instance, passing SQLite-specific options.
+3. We create an ent client using the SQLite dialect and our ComfyDB-backed `*sql.DB`.
+4. We run ent's auto-migration to create the schema.
+
+This integration allows you to leverage the concurrency benefits of ComfyLite3 while using ent's powerful ORM features. [Check by yourself that repository](https://github.com/davidroman0O/comfylite3-ent)
+
 ## Migrations
 
 Migrations is important and `sqlite` is a specific type of database, and it support migrations!
