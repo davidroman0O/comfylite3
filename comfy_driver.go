@@ -134,8 +134,27 @@ func convertValues(vals []driver.Value) []interface{} {
 	return result
 }
 
+type OpenDBOptions struct {
+	options         []string
+	withForeignKeys bool
+}
+
+type OpenDBOption func(*OpenDBOptions)
+
+func WithForeignKeys() func(*OpenDBOptions) {
+	return func(o *OpenDBOptions) {
+		o.withForeignKeys = true
+	}
+}
+
+func WithOption(options string) func(*OpenDBOptions) {
+	return func(o *OpenDBOptions) {
+		o.options = append(o.options, options)
+	}
+}
+
 // OpenDB creates a new sql.DB instance using ComfyDB
-func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
+func OpenDB(comfy *ComfyDB, opts ...OpenDBOption) *sql.DB {
 	connStr := comfy.conn
 
 	// If comfy.conn is empty, use the default connection string
@@ -158,9 +177,14 @@ func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
 		}
 	}
 
+	cfg := OpenDBOptions{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// Add new options
 	newOptions := []string{}
-	for _, opt := range options {
+	for _, opt := range cfg.options {
 		key := strings.SplitN(opt, "=", 2)[0]
 		if !existingOptions[key] {
 			newOptions = append(newOptions, opt)
@@ -186,9 +210,11 @@ func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
 	})
 
 	// Explicitly enable foreign keys
-	_, err := db.Exec("PRAGMA foreign_keys = ON;")
-	if err != nil {
-		fmt.Printf("Error setting foreign_keys pragma: %v\n", err)
+	if cfg.withForeignKeys {
+		_, err := db.Exec("PRAGMA foreign_keys = ON;")
+		if err != nil {
+			fmt.Printf("Error setting foreign_keys pragma: %v\n", err)
+		}
 	}
 
 	return db

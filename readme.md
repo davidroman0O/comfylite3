@@ -124,7 +124,13 @@ func main() {
     defer comfy.Close()
 
     // Use the OpenDB function to create a sql.DB instance with SQLite options
-    db := comfylite3.OpenDB(comfy, "_fk=1", "cache=shared", "mode=rwc")
+    db := comfylite3.OpenDB(
+		comfy, 
+		comfylite3.WithOpion("_fk=1"),
+		comfylite3.WithOpion("cache=shared"),
+		comfylite3.WithOpion("mode=rwc"),
+		comfylite3.WithForeignKeys(),
+	)
 
     // Create a new ent client
     client := ent.NewClient(ent.Driver(sql.OpenDB(dialect.SQLite, db)))
