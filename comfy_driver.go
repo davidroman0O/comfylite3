@@ -178,7 +178,7 @@ func OpenDB(comfy *ComfyDB, options ...string) *sql.DB {
 		connStr += strings.Join(newOptions, "&")
 	}
 
-	fmt.Printf("Connection string: %s\n", connStr) // Debug print
+	// fmt.Printf("Connection string: %s\n", connStr) // Debug print
 
 	db := sql.OpenDB(&ComfyDriver{
 		comfy:   comfy,
