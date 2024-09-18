@@ -69,6 +69,37 @@ switch result.(type) {
 
 ```
 
+## Using ComfyDB as a standard sql.DB
+
+ComfyLite3 now provides an `OpenDB` function that allows you to use ComfyDB as a standard `sql.DB` instance. This makes it easier to integrate ComfyLite3 with existing code or libraries that expect a `*sql.DB`.
+
+```go
+// Create a new ComfyDB instance
+comfy, err := comfylite3.New(comfylite3.WithMemory())
+if err != nil {
+    panic(err)
+}
+
+// Open a standard sql.DB instance using ComfyDB
+db := comfylite3.OpenDB(comfy)
+
+// Now you can use db as a regular *sql.DB
+rows, err := db.Query("SELECT * FROM users")
+// ...
+
+// Don't forget to close both when you're done
+defer db.Close()
+defer comfy.Close()
+```
+
+The `OpenDB` function accepts additional options as variadic string arguments, allowing you to customize the connection string. For example:
+
+```go
+db := comfylite3.OpenDB(comfy, "_foreign_keys=on", "cache=shared")
+```
+
+This feature makes ComfyLite3 more flexible and easier to use in a variety of scenarios, especially when working with existing codebases or third-party libraries.
+
 ## Migrations
 
 Migrations is important and `sqlite` is a specific type of database, and it support migrations!
