@@ -96,19 +96,28 @@ func (cr *comfyRows) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 
-	// Convert []driver.Value to []any
-	args := make([]any, len(dest))
-	for i, v := range dest {
-		args[i] = &v
-	}
-
-	if err := cr.rows.Scan(args...); err != nil {
+	columns, err := cr.rows.Columns()
+	if err != nil {
 		return err
 	}
 
-	// Copy scanned values back to dest
-	for i, v := range args {
-		dest[i] = *v.(*driver.Value)
+	if len(dest) != len(columns) {
+		return fmt.Errorf("expected %d columns but got %d", len(dest), len(columns))
+	}
+
+	// Prepare a slice of pointers to empty interfaces to pass to rows.Scan
+	values := make([]interface{}, len(dest))
+	for i := range values {
+		values[i] = new(interface{})
+	}
+
+	if err := cr.rows.Scan(values...); err != nil {
+		return err
+	}
+
+	for i, v := range values {
+		val := *(v.(*interface{}))
+		dest[i] = driver.Value(val)
 	}
 
 	return nil
