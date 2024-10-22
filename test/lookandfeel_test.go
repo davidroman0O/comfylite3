@@ -302,7 +302,7 @@ func TestMemory(t *testing.T) {
 		_, err := db.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
 		return nil, err
 	})
-	<-superComfy.WaitFor(ticket)
+	<-superComfy.WaitForChn(ticket)
 
 	done := make(chan struct{})
 
@@ -313,7 +313,7 @@ func TestMemory(t *testing.T) {
 				_, err := db.Exec("INSERT INTO users (name) VALUES (?)", fmt.Sprintf("user%d", 1))
 				return nil, err
 			})
-			<-superComfy.WaitFor(ticket)
+			<-superComfy.WaitForChn(ticket)
 			// simulate random insert with a random sleep
 			time.Sleep(time.Duration(random.Intn(5)) * time.Millisecond)
 		}
@@ -358,7 +358,7 @@ func TestMemory(t *testing.T) {
 
 				return count, err
 			})
-			result := <-superComfy.WaitFor(ticket)
+			result := <-superComfy.WaitForChn(ticket)
 			metrics = append(metrics, result.(int))
 		}
 	}
