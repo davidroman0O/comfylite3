@@ -40,7 +40,7 @@ comfy, err := comfylite3.New(
     comfylite3.WithMemory(),
     comfylite3.WithRetryAttempts(3),        // Configure max retries
     comfylite3.WithRetryDelay(time.Second), // Set delay between retries
-    comfylite3.WithPanicHandler(func(item *workItem, r interface{}) {
+    comfylite3.WithPanicHandler(func(v interface{}, stackTrace string) {
         // Custom panic handling
     }),
 )
@@ -76,7 +76,7 @@ This feature makes ComfyLite3 more flexible and easier to use in a variety of sc
 
 ## What you can do
 
-Very simplistic API, `comfylite3` manage when to execute and you do as usual. I'm just judging how you will wrap that library!
+Very simplistic API, `comfylite3` manage when to execute and you do as usual.
 
 ```go
 // Create a new comfy database for `sqlite3`
