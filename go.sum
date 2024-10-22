@@ -1,2 +1,4 @@
+github.com/davidroman0O/retrypool v0.0.0-20241012185236-da4e59b1e647 h1:HrcvCXWwhK3UPVvpAnvHWEw2FnLzb+2exCESIKkI1xg=
+github.com/davidroman0O/retrypool v0.0.0-20241012185236-da4e59b1e647/go.mod h1:JwPiwkzechOxNHCmaDs+/uk1tY9nQSLRrdiYLIy1gA4=
 github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=

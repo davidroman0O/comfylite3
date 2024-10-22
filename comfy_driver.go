@@ -60,7 +60,7 @@ func (cs *comfyStmt) Exec(args []driver.Value) (driver.Result, error) {
 	id := cs.comfy.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec(cs.query, convertValues(args)...)
 	})
-	result := <-cs.comfy.WaitFor(id)
+	result := <-cs.comfy.WaitForChn(id)
 	if err, ok := result.(error); ok {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (cs *comfyStmt) Query(args []driver.Value) (driver.Rows, error) {
 	id := cs.comfy.New(func(db *sql.DB) (interface{}, error) {
 		return db.Query(cs.query, convertValues(args)...)
 	})
-	result := <-cs.comfy.WaitFor(id)
+	result := <-cs.comfy.WaitForChn(id)
 	if err, ok := result.(error); ok {
 		return nil, err
 	}

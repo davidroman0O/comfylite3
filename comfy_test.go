@@ -29,7 +29,7 @@ func TestMemory(t *testing.T) {
 		})
 	}()
 	createID := <-chnCreate
-	<-comfyMe.WaitFor(createID)
+	<-comfyMe.WaitForChn(createID)
 
 	go func() {
 		chnInsert := make(chan uint64)
@@ -39,7 +39,7 @@ func TestMemory(t *testing.T) {
 			})
 		}()
 		insertID := <-chnInsert
-		<-comfyMe.WaitFor(insertID)
+		<-comfyMe.WaitForChn(insertID)
 	}()
 
 	chnInsertDoe := make(chan uint64)
@@ -54,8 +54,8 @@ func TestMemory(t *testing.T) {
 	chnInsertMain := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec("INSERT INTO users (name) VALUES (?)", "John Doe")
 	})
-	<-comfyMe.WaitFor(chnInsertMain)
-	<-comfyMe.WaitFor(insertDoeID)
+	<-comfyMe.WaitForChn(chnInsertMain)
+	<-comfyMe.WaitForChn(insertDoeID)
 
 	chnSelect := make(chan uint64)
 	go func() {
@@ -95,9 +95,9 @@ func TestMemory(t *testing.T) {
 		}
 		return names, nil
 	})
-	resultMainUsers := <-comfyMe.WaitFor(selectMainID)
+	resultMainUsers := <-comfyMe.WaitForChn(selectMainID)
 	selectGoID := <-chnSelect // almost same time, see if we got our select from the previous goroutine
-	resultFromGo := <-comfyMe.WaitFor(selectGoID)
+	resultFromGo := <-comfyMe.WaitForChn(selectGoID)
 	var names []string
 
 	switch dd := resultMainUsers.(type) {
@@ -176,7 +176,7 @@ func TestFile(t *testing.T) {
 		})
 	}()
 	createID := <-chnCreate
-	<-comfyMe.WaitFor(createID)
+	<-comfyMe.WaitForChn(createID)
 
 	go func() {
 		chnInsert := make(chan uint64)
@@ -186,7 +186,7 @@ func TestFile(t *testing.T) {
 			})
 		}()
 		insertID := <-chnInsert
-		<-comfyMe.WaitFor(insertID)
+		<-comfyMe.WaitForChn(insertID)
 	}()
 
 	chnInsertDoe := make(chan uint64)
@@ -201,8 +201,8 @@ func TestFile(t *testing.T) {
 	chnInsertMain := comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec("INSERT INTO users (name) VALUES (?)", "John Doe")
 	})
-	<-comfyMe.WaitFor(chnInsertMain)
-	<-comfyMe.WaitFor(insertDoeID)
+	<-comfyMe.WaitForChn(chnInsertMain)
+	<-comfyMe.WaitForChn(insertDoeID)
 
 	chnSelect := make(chan uint64)
 	go func() {
@@ -242,9 +242,9 @@ func TestFile(t *testing.T) {
 		}
 		return names, nil
 	})
-	resultMainUsers := <-comfyMe.WaitFor(selectMainID)
+	resultMainUsers := <-comfyMe.WaitForChn(selectMainID)
 	selectGoID := <-chnSelect // almost same time, see if we got our select from the previous goroutine
-	resultFromGo := <-comfyMe.WaitFor(selectGoID)
+	resultFromGo := <-comfyMe.WaitForChn(selectGoID)
 	var names []string
 
 	switch dd := resultMainUsers.(type) {
@@ -325,13 +325,13 @@ func TestLockedGist(t *testing.T) {
 		_, err := db.Exec(setupSql)
 		return nil, err
 	})
-	<-comfyMe.WaitFor(id)
+	<-comfyMe.WaitForChn(id)
 
 	id = comfyMe.New(func(db *sql.DB) (interface{}, error) {
 		return db.Exec(`INSERT INTO products (product_name) VALUES ("computer")`)
 	})
-	<-comfyMe.WaitFor(id)
-	comfyMe.Clear(id)
+	<-comfyMe.WaitForChn(id)
+	// comfyMe.Clear(id)
 
 	writesIDs := []uint64{}
 	readsIDs := []uint64{}
@@ -407,7 +407,7 @@ func TestLockedGist(t *testing.T) {
 	}
 
 	// for _, v := range readsIDs {
-	// 	result := <-comfyMe.WaitFor(v)
+	// 	result := <-comfyMe.WaitForChn(v)
 	// 	switch dd := result.(type) {
 	// 	case []map[string]interface{}:
 	// 		// fmt.Println(dd)
