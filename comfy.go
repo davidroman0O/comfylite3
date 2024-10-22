@@ -29,6 +29,8 @@ const memoryConn = "file::memory:?_mutex=full&cache=shared&_timeout=5000"
 // Default File Connection
 const fileConn = "file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000"
 
+type onPanic func(v interface{}, stackTrace string)
+
 type Migration struct {
 	Version uint
 	Label   string
@@ -116,9 +118,11 @@ func WithRetryDelay(delay time.Duration) ComfyOption {
 }
 
 // WithPanicHandler sets custom panic handler
-func WithPanicHandler(handler retrypool.PanicHandlerFunc[*workItem]) ComfyOption {
+func WithPanicHandler(handler onPanic) ComfyOption {
 	return func(c *ComfyDB) {
-		c.poolOptions = append(c.poolOptions, retrypool.WithPanicHandler[*workItem](handler))
+		c.poolOptions = append(c.poolOptions, retrypool.WithPanicHandler[*workItem](func(task *workItem, v interface{}, stackTrace string) {
+			handler(v, stackTrace)
+		}))
 	}
 }
 
