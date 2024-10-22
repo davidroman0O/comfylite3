@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -48,7 +49,7 @@ func NewMigration(version uint, label string, up, down func(tx *sql.Tx) error) M
 // ComfyDB is a wrapper around sqlite3 that provides a simple API for executing SQL queries with goroutines.
 type ComfyDB struct {
 	db      *sql.DB
-	count   atomic.Uint64 // TODO: when reached max, we need to reset to zero
+	count   atomic.Uint64
 	results sync.Map
 
 	migrations         []Migration
@@ -230,6 +231,12 @@ func (c *ComfyDB) Run(ctx context.Context, item *workItem) error {
 
 // New adds a new SQL function to be executed
 func (c *ComfyDB) New(fn SqlFn) uint64 {
+
+	// Check if we're about to overflow and reset if necessary
+	if c.count.Load() == math.MaxUint64 {
+		c.count.Store(1) // Reset to 1
+	}
+
 	item := &workItem{
 		id:     c.count.Add(1),
 		fn:     fn,
