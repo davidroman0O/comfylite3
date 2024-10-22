@@ -47,11 +47,9 @@ func NewMigration(version uint, label string, up, down func(tx *sql.Tx) error) M
 
 // ComfyDB is a wrapper around sqlite3 that provides a simple API for executing SQL queries with goroutines.
 type ComfyDB struct {
-	id      uint64
 	db      *sql.DB
-	count   atomic.Uint64
-	mu      sync.Mutex
-	results sync.Map // map[uint64]*workItem
+	count   atomic.Uint64 // TODO: when reached max, we need to reset to zero
+	results sync.Map
 
 	migrations         []Migration
 	migrationTableName string
@@ -60,7 +58,8 @@ type ComfyDB struct {
 	path   string
 	conn   string
 
-	pool *retrypool.Pool[*workItem]
+	pool        *retrypool.Pool[*workItem]
+	poolOptions []retrypool.Option[*workItem]
 }
 
 type ComfyOption func(*ComfyDB)
@@ -98,6 +97,27 @@ func WithConnection(conn string) ComfyOption {
 func WithMigration(migrations ...Migration) ComfyOption {
 	return func(c *ComfyDB) {
 		c.migrations = append(c.migrations, migrations...)
+	}
+}
+
+// WithRetryAttempts sets maximum retry attempts for failed operations
+func WithRetryAttempts(attempts int) ComfyOption {
+	return func(c *ComfyDB) {
+		c.poolOptions = append(c.poolOptions, retrypool.WithAttempts[*workItem](attempts))
+	}
+}
+
+// WithRetryDelay sets delay between retries
+func WithRetryDelay(delay time.Duration) ComfyOption {
+	return func(c *ComfyDB) {
+		c.poolOptions = append(c.poolOptions, retrypool.WithDelay[*workItem](delay))
+	}
+}
+
+// WithPanicHandler sets custom panic handler
+func WithPanicHandler(handler retrypool.PanicHandlerFunc[*workItem]) ComfyOption {
+	return func(c *ComfyDB) {
+		c.poolOptions = append(c.poolOptions, retrypool.WithPanicHandler[*workItem](handler))
 	}
 }
 
@@ -148,6 +168,7 @@ func New(opts ...ComfyOption) (*ComfyDB, error) {
 		memory:             true,
 		migrations:         []Migration{},
 		migrationTableName: "_migrations",
+		poolOptions:        make([]retrypool.Option[*workItem], 0),
 	}
 
 	c.count.Store(1)
@@ -158,18 +179,17 @@ func New(opts ...ComfyOption) (*ComfyDB, error) {
 
 	// Open the database connection
 	var err error
-	var conn string
 	if c.conn != "" {
-		conn = c.conn
+		c.db, err = sql.Open("sqlite3", c.conn)
+	} else if c.memory {
+		c.db, err = sql.Open("sqlite3", memoryConn)
 	} else {
-		if c.memory {
-			conn = memoryConn
-		} else {
-			conn = fmt.Sprintf(fileConn, c.path)
+		if c.path == "" {
+			return nil, fmt.Errorf("path is required")
 		}
+		c.db, err = sql.Open("sqlite3", fmt.Sprintf(fileConn, c.path))
 	}
 
-	c.db, err = sql.Open("sqlite3", conn)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +198,11 @@ func New(opts ...ComfyOption) (*ComfyDB, error) {
 	c.db.SetMaxIdleConns(1)
 
 	// Initialize the retrypool with a single worker
-	c.pool = retrypool.New[*workItem](context.Background(), []retrypool.Worker[*workItem]{c})
+	c.pool = retrypool.New[*workItem](
+		context.Background(),
+		[]retrypool.Worker[*workItem]{c},
+		c.poolOptions...,
+	)
 
 	// Prepare migrations
 	if err := c.prepareMigration(); err != nil {
