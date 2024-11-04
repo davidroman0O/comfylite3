@@ -129,7 +129,11 @@ func WithPanicHandler(handler onPanic) ComfyOption {
 // Close the database connection.
 func (c *ComfyDB) Close() error {
 	// Close the retrypool
-	c.pool.Close()
+	if err := c.pool.Shutdown(); err != nil {
+		if err != context.Canceled {
+			return err
+		}
+	}
 
 	// Close the database connection
 	return c.db.Close()
@@ -251,7 +255,7 @@ func (c *ComfyDB) New(fn SqlFn) uint64 {
 	c.results.Store(item.id, item)
 
 	// Dispatch the work item to the retrypool
-	err := c.pool.Dispatch(item)
+	err := c.pool.Submit(item)
 	if err != nil {
 		// Handle the error appropriately
 		// For now, let's panic
