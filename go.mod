@@ -3,7 +3,7 @@ module github.com/davidroman0O/comfylite3
 go 1.22.0
 
 require (
-	github.com/davidroman0O/retrypool v0.0.0-20241104163535-17f9cc24eb94
+	github.com/davidroman0O/retrypool v0.0.0-20241111214821-4cbfba842c21
 	github.com/mattn/go-sqlite3 v1.14.22
 )
 

@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/davidroman0O/retrypool v0.0.0-20241104163535-17f9cc24eb94 h1:A5WR67PIovQQkqxhdQaBpr/8eUmZmtWFzzH+WFth8bk=
-github.com/davidroman0O/retrypool v0.0.0-20241104163535-17f9cc24eb94/go.mod h1:j2FLU6onEEjp77DQ25wYIjTsPdK7Q5R1q4Za8WisvMY=
+github.com/davidroman0O/retrypool v0.0.0-20241111214821-4cbfba842c21 h1:B61HI/kmyrofTXLCklmAMQqOIUt8wny6jhXu4fBY7kQ=
+github.com/davidroman0O/retrypool v0.0.0-20241111214821-4cbfba842c21/go.mod h1:j2FLU6onEEjp77DQ25wYIjTsPdK7Q5R1q4Za8WisvMY=
 github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 h1:Dx7Ovyv/SFnMFw3fD4oEoeorXc6saIiQ23LrGLth0Gw=
