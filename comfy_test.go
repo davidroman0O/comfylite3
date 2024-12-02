@@ -1,12 +1,14 @@
 package comfylite3
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -414,4 +416,211 @@ func TestLockedGist(t *testing.T) {
 	// 	}
 	// }
 
+}
+
+func TestDatabaseLocking(t *testing.T) {
+	t.Run("Test Lock Detection", func(t *testing.T) {
+		// Create a new database
+		db, err := New(WithMemory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		// First check - database should be unlocked initially
+		locked, err := db.IsLocked()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if locked {
+			t.Error("Database should not be locked initially")
+		}
+
+		// Create a table for testing
+		createID := db.New(func(d *sql.DB) (interface{}, error) {
+			_, err := d.Exec(`CREATE TABLE test_lock (
+                id INTEGER PRIMARY KEY,
+                value TEXT
+            )`)
+			return nil, err
+		})
+		if result := <-db.WaitForChn(createID); result != nil {
+			if err, ok := result.(error); ok {
+				t.Fatal(err)
+			}
+		}
+
+		// Test concurrent access causing locks
+		var wg sync.WaitGroup
+		lockChan := make(chan bool, 1)
+
+		// Start a long-running transaction in a goroutine
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			txID := db.New(func(d *sql.DB) (interface{}, error) {
+				// Begin transaction
+				tx, err := d.Begin()
+				if err != nil {
+					return nil, err
+				}
+				defer tx.Rollback()
+
+				// Insert some data
+				_, err = tx.Exec("INSERT INTO test_lock (value) VALUES (?)", "test-value")
+				if err != nil {
+					return nil, err
+				}
+
+				// Signal that we're in the middle of the transaction
+				lockChan <- true
+
+				// Hold the transaction open for a while
+				time.Sleep(500 * time.Millisecond)
+
+				// Commit the transaction
+				return nil, tx.Commit()
+			})
+			<-db.WaitForChn(txID)
+		}()
+
+		// Wait for the transaction to start
+		<-lockChan
+
+		// Now check if database is locked
+		locked, err = db.IsLocked()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !locked {
+			t.Error("Database should be locked during transaction")
+		}
+
+		// Wait for the goroutine to finish
+		wg.Wait()
+
+		// Database should be unlocked again
+		locked, err = db.IsLocked()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if locked {
+			t.Error("Database should be unlocked after transaction completes")
+		}
+	})
+
+	t.Run("Test WaitUnlocked", func(t *testing.T) {
+		db, err := New(WithMemory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		// Start a long-running transaction
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			txID := db.New(func(d *sql.DB) (interface{}, error) {
+				tx, err := d.Begin()
+				if err != nil {
+					return nil, err
+				}
+				defer tx.Rollback()
+
+				// Do some work that will hold the lock
+				_, err = tx.Exec(`
+                    CREATE TABLE IF NOT EXISTS test_wait (id INTEGER PRIMARY KEY);
+                    INSERT INTO test_wait DEFAULT VALUES;
+                `)
+				if err != nil {
+					return nil, err
+				}
+
+				// Hold the lock for a while
+				time.Sleep(time.Second)
+
+				return nil, tx.Commit()
+			})
+			<-db.WaitForChn(txID)
+		}()
+
+		// Give the transaction time to start
+		time.Sleep(100 * time.Millisecond)
+
+		// Test WaitUnlocked with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		err = db.WaitUnlocked(ctx)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed < time.Second/2 {
+			t.Error("WaitUnlocked returned too quickly")
+		}
+
+		wg.Wait()
+	})
+
+	t.Run("Test WaitUnlocked Timeout", func(t *testing.T) {
+		db, err := New(WithMemory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		// Start a long-running transaction
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			txID := db.New(func(d *sql.DB) (interface{}, error) {
+				tx, err := d.Begin()
+				if err != nil {
+					return nil, err
+				}
+				defer tx.Rollback()
+
+				// Hold the lock for longer than the timeout
+				_, err = tx.Exec(`
+                    CREATE TABLE IF NOT EXISTS test_timeout (id INTEGER PRIMARY KEY);
+                    INSERT INTO test_timeout DEFAULT VALUES;
+                `)
+				if err != nil {
+					return nil, err
+				}
+
+				time.Sleep(2 * time.Second)
+
+				return nil, tx.Commit()
+			})
+			<-db.WaitForChn(txID)
+		}()
+
+		// Give the transaction time to start
+		time.Sleep(100 * time.Millisecond)
+
+		// Test WaitUnlocked with a short timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		err = db.WaitUnlocked(ctx)
+		if err == nil {
+			t.Error("Expected timeout error, got nil")
+		}
+		if err != context.DeadlineExceeded {
+			t.Errorf("Expected DeadlineExceeded error, got: %v", err)
+		}
+
+		wg.Wait()
+	})
 }

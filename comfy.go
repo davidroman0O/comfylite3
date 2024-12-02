@@ -3,9 +3,11 @@ package comfylite3
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -615,4 +617,73 @@ func (c *ComfyDB) ShowColumns(table string) ([]Column, error) {
 func (c *ComfyDB) RunSQL(fn SqlFn) (interface{}, error) {
 	workID := c.New(fn)
 	return c.WaitFor(workID)
+}
+
+func (c *ComfyDB) IsLocked() (bool, error) {
+	// Create a context with timeout to avoid hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Try to execute a lightweight query that requires a write lock
+	lockCheckID := c.New(func(db *sql.DB) (interface{}, error) {
+		// Begin a transaction
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return true, nil // If we can't begin a transaction, assume it's locked
+		}
+		defer tx.Rollback()
+
+		// Try to create and immediately drop a temporary table
+		_, err = tx.ExecContext(ctx, `
+            CREATE TEMPORARY TABLE IF NOT EXISTS _lock_check (id INTEGER PRIMARY KEY);
+            DROP TABLE IF EXISTS _lock_check;
+        `)
+
+		if err != nil {
+			// Check if the error is a database locked error
+			if errors.Is(err, sql.ErrConnDone) ||
+				errors.Is(err, sql.ErrTxDone) ||
+				strings.Contains(err.Error(), "database is locked") {
+				return true, nil
+			}
+			return false, err
+		}
+
+		return false, nil
+	})
+
+	result, err := c.WaitFor(lockCheckID)
+	if err != nil {
+		return false, err
+	}
+
+	switch v := result.(type) {
+	case bool:
+		return v, nil
+	case error:
+		return false, v
+	default:
+		return false, errors.New("unexpected result type from lock check")
+	}
+}
+
+// WaitUnlocked waits for the database to become unlocked or until context is cancelled
+func (c *ComfyDB) WaitUnlocked(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			locked, err := c.IsLocked()
+			if err != nil {
+				return err
+			}
+			if !locked {
+				return nil
+			}
+		}
+	}
 }
