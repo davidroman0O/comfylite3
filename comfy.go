@@ -58,6 +58,7 @@ type ComfyDB struct {
 	migrationTableName string
 
 	memory bool
+	driver string
 	path   string
 	conn   string
 
@@ -93,6 +94,12 @@ func WithMemory() ComfyOption {
 func WithConnection(conn string) ComfyOption {
 	return func(o *ComfyDB) {
 		o.conn = conn
+	}
+}
+
+func WithDriver(driver string) ComfyOption {
+	return func(o *ComfyDB) {
+		o.driver = driver
 	}
 }
 
@@ -178,6 +185,7 @@ func New(opts ...ComfyOption) (*ComfyDB, error) {
 		migrations:         []Migration{},
 		migrationTableName: "_migrations",
 		poolOptions:        make([]retrypool.Option[*workItem], 0),
+		driver:             "sqlite3",
 	}
 
 	c.count.Store(1)
@@ -189,14 +197,14 @@ func New(opts ...ComfyOption) (*ComfyDB, error) {
 	// Open the database connection
 	var err error
 	if c.conn != "" {
-		c.db, err = sql.Open("sqlite3", c.conn)
+		c.db, err = sql.Open(c.driver, c.conn)
 	} else if c.memory {
-		c.db, err = sql.Open("sqlite3", memoryConn)
+		c.db, err = sql.Open(c.driver, memoryConn)
 	} else {
 		if c.path == "" {
 			return nil, fmt.Errorf("path is required")
 		}
-		c.db, err = sql.Open("sqlite3", fmt.Sprintf(fileConn, c.path))
+		c.db, err = sql.Open(c.driver, fmt.Sprintf(fileConn, c.path))
 	}
 
 	if err != nil {
