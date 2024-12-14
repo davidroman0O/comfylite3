@@ -127,8 +127,8 @@ func WithRetryDelay(delay time.Duration) ComfyOption {
 // WithPanicHandler sets custom panic handler
 func WithPanicHandler(handler onPanic) ComfyOption {
 	return func(c *ComfyDB) {
-		c.poolOptions = append(c.poolOptions, retrypool.WithPanicHandler[*workItem](func(task *workItem, v interface{}, stackTrace string) {
-			handler(v, stackTrace)
+		c.poolOptions = append(c.poolOptions, retrypool.WithOnWorkerPanic[*workItem](func(workerID int, recovery interface{}, stackTrace string) {
+			handler(recovery, stackTrace)
 		}))
 	}
 }
@@ -136,7 +136,7 @@ func WithPanicHandler(handler onPanic) ComfyOption {
 // Close the database connection.
 func (c *ComfyDB) Close() error {
 	// Close the retrypool
-	if err := c.pool.Shutdown(); err != nil {
+	if err := c.pool.Close(); err != nil {
 		if err != context.Canceled {
 			return err
 		}
