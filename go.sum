@@ -1,5 +1,5 @@
-github.com/davidroman0O/retrypool v0.0.0-20241213234017-6d929f1be9e1 h1:rVurIIUCW+2Q8y0OIF7vq1af4YoFNg+SwkOr+LMzIzU=
-github.com/davidroman0O/retrypool v0.0.0-20241213234017-6d929f1be9e1/go.mod h1:Bs5wRV2c1mk6DXCd3Hc3mDWjX/BOt0LgbaxQYNSy3co=
+github.com/davidroman0O/retrypool v0.0.0-20241214051312-5e5301e444ed h1:1YZ/+N/X9JH7q9sozBFWJl11c/2sLUCV0v6JlGL0jM4=
+github.com/davidroman0O/retrypool v0.0.0-20241214051312-5e5301e444ed/go.mod h1:Bs5wRV2c1mk6DXCd3Hc3mDWjX/BOt0LgbaxQYNSy3co=
 github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 golang.org/x/time v0.8.0 h1:9i3RxcPv3PZnitoVGMPDKZSq1xW1gK1Xy3ArNOGZfEg=
